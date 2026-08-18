@@ -1,7 +1,19 @@
-import React, { useState } from 'react';
-import { Building2, MapPin, Save, ShieldCheck, Clock } from 'lucide-react';
-import type { PantryInfo } from '../types';
+import React, { useState, useEffect, useRef } from "react";
+import { Building2, MapPin, Save, ShieldCheck, Navigation } from "lucide-react";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import type { PantryInfo } from "../types";
 
+// Custom Leaflet Pin Icon
+const pinIcon = L.icon({
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
+});
 
 interface ProfilePageProps {
   pantry: PantryInfo;
@@ -12,27 +24,130 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
   const [formData, setFormData] = useState<PantryInfo>(pantry);
   const [isSaved, setIsSaved] = useState(false);
 
+  // Precise Geolocation Coordinates State
+  const [coords, setCoords] = useState<{ lat: number; lng: number }>({
+    lat: pantry.latitude || 32.3792,
+    lng: pantry.longitude || -86.3077,
+  });
+  const [isLocating, setIsLocating] = useState(false);
+  const [geoStatus, setGeoStatus] = useState<string>("Default Montgomery Coordinates");
+  const [accessNotes, setAccessNotes] = useState(
+    pantry.accessNotes || "Distribution takes place around back at the Fellowship Hall door near the blue awning."
+  );
+
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
+
   const handleChange = (field: keyof PantryInfo, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onUpdatePantry(formData);
+    onUpdatePantry({
+      ...formData,
+      latitude: coords.lat,
+      longitude: coords.lng,
+      accessNotes: accessNotes,
+    });
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 3000);
   };
 
+  // Browser Geolocation Detector
+  const handleDetectLocation = () => {
+    if (!navigator.geolocation) {
+      setGeoStatus("Geolocation is not supported by your browser");
+      return;
+    }
+    setIsLocating(true);
+    setGeoStatus("Detecting your physical GPS location...");
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const newLat = Number(position.coords.latitude.toFixed(6));
+        const newLng = Number(position.coords.longitude.toFixed(6));
+        setCoords({ lat: newLat, lng: newLng });
+        setIsLocating(false);
+        setGeoStatus(`🟢 Centered on GPS Location (Accuracy ±${Math.round(position.coords.accuracy)}m)`);
+
+        if (mapInstanceRef.current && markerRef.current) {
+          mapInstanceRef.current.setView([newLat, newLng], 17);
+          markerRef.current.setLatLng([newLat, newLng]);
+        }
+      },
+      (error) => {
+        setIsLocating(false);
+        setGeoStatus(`Unable to retrieve location (${error.message}). Using manual drag pin.`);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
+
+  // Initialize Interactive Leaflet Map
+  useEffect(() => {
+    if (!mapContainerRef.current) return;
+
+    if (!mapInstanceRef.current) {
+      const map = L.map(mapContainerRef.current).setView([coords.lat, coords.lng], 16);
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "© OpenStreetMap contributors",
+        maxZoom: 19,
+      }).addTo(map);
+
+      const marker = L.marker([coords.lat, coords.lng], {
+        draggable: true,
+        icon: pinIcon,
+      }).addTo(map);
+
+      marker.bindPopup("<b>Exact Pantry Door Pin</b><br>Drag marker to exact distribution entrance.").openPopup();
+
+      marker.on("dragend", () => {
+        const latLng = marker.getLatLng();
+        setCoords({
+          lat: Number(latLng.lat.toFixed(6)),
+          lng: Number(latLng.lng.toFixed(6)),
+        });
+        setGeoStatus("🟡 Operator Satellited Pin Positioned");
+      });
+
+      map.on("click", (e: L.LeafletMouseEvent) => {
+        const { lat, lng } = e.latlng;
+        setCoords({
+          lat: Number(lat.toFixed(6)),
+          lng: Number(lng.toFixed(6)),
+        });
+        marker.setLatLng([lat, lng]);
+        setGeoStatus("🟡 Operator Satellited Pin Positioned");
+      });
+
+      mapInstanceRef.current = map;
+      markerRef.current = marker;
+
+      // Auto detect user location on initial load if default
+      handleDetectLocation();
+    }
+
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, []);
+
   const inputClass = "w-full text-[13px] p-2.5 rounded-xl border border-[#e5e5ea] focus:outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/20 bg-white placeholder:text-[#86868b]";
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 font-sans">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[#1d1d1f] tracking-tight font-display">Pantry profile</h1>
           <p className="text-[14px] text-[#86868b] mt-0.5">
-            Manage your organization verification, hours rules, and public listing details
+            Manage your location pinpoint, verification status, and public listing details
           </p>
         </div>
 
@@ -41,7 +156,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
           className="px-4 py-2 bg-[#0071e3] hover:bg-[#0077ed] text-white text-[13px] font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
         >
           <Save className="w-4 h-4" />
-          <span>{isSaved ? 'Saved' : 'Save changes'}</span>
+          <span>{isSaved ? "Saved!" : "Save changes"}</span>
         </button>
       </div>
 
@@ -63,7 +178,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
                   type="text"
                   required
                   value={formData.ein}
-                  onChange={(e) => handleChange('ein', e.target.value)}
+                  onChange={(e) => handleChange("ein", e.target.value)}
                   className={inputClass}
                 />
               </div>
@@ -72,31 +187,61 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
                 <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">Verification Status</label>
                 <div className="p-2.5 rounded-xl bg-[#34c759]/10 border border-[#34c759]/20 text-[#34c759] text-[13px] font-semibold flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 shrink-0" />
-                  <span>{formData.verificationStatus}</span>
+                  <span>{formData.verificationStatus} ($0 Free Community Access)</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Shift Automation & Safety Rules */}
+          {/* Interactive Geolocation Satellite Pinpoint Component */}
           <div className="card p-5 space-y-4">
-            <div className="flex items-center gap-2 pb-3 border-b border-[#e5e5ea]">
-              <Clock className="w-[18px] h-[18px] text-[#0071e3]" />
-              <h2 className="text-[14px] font-semibold text-[#1d1d1f]">Shift Automation & Auto-Close Rules</h2>
+            <div className="flex items-center justify-between pb-3 border-b border-[#e5e5ea]">
+              <div className="flex items-center gap-2">
+                <MapPin className="w-[18px] h-[18px] text-[#0071e3]" />
+                <h2 className="text-[14px] font-semibold text-[#1d1d1f]">Interactive Location Pinpoint</h2>
+              </div>
+              <button
+                type="button"
+                onClick={handleDetectLocation}
+                disabled={isLocating}
+                className="px-3 py-1 bg-[#0071e3]/10 hover:bg-[#0071e3]/20 text-[#0071e3] text-[12px] font-semibold rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer border border-[#0071e3]/20"
+              >
+                <Navigation className={`w-3.5 h-3.5 ${isLocating ? "animate-spin" : ""}`} />
+                <span>{isLocating ? "Locating..." : "📍 Center on My Location"}</span>
+              </button>
             </div>
 
-            <div className="flex items-center justify-between p-3.5 rounded-xl bg-[#f5f5f7] border border-[#e5e5ea]">
-              <div>
-                <p className="text-[13px] font-semibold text-[#1d1d1f]">Automatic Shift Closure</p>
-                <p className="text-[12px] text-[#86868b]">Prevents stale status if operators forget to set Closed at shift end</p>
-              </div>
+            <p className="text-[12px] text-[#86868b] leading-relaxed">
+              Rural addresses often geocode to highway midpoints or fields. Click or drag the marker directly onto your actual building structure or distribution door on the live map below.
+            </p>
 
+            {/* Live Interactive Leaflet Map Container */}
+            <div className="relative rounded-2xl overflow-hidden border border-[#e5e5ea] h-72 w-full z-0 shadow-inner">
+              <div ref={mapContainerRef} className="w-full h-full" />
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-3 rounded-xl bg-[#f5f5f7] border border-[#e5e5ea] text-[12px]">
+              <span className="font-mono text-[#0071e3] font-bold">
+                Lat: {coords.lat} | Lng: {coords.lng}
+              </span>
+              <span className="text-[#86868b] font-medium">{geoStatus}</span>
+            </div>
+
+            {/* Landmark Access Notes */}
+            <div>
+              <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">
+                Landmark & Physical Entrance Notes
+              </label>
               <input
-                type="checkbox"
-                checked={formData.autoCloseEnabled}
-                onChange={(e) => handleChange('autoCloseEnabled', e.target.checked)}
-                className="w-4 h-4 accent-[#0071e3] cursor-pointer"
+                type="text"
+                value={accessNotes}
+                onChange={(e) => setAccessNotes(e.target.value)}
+                placeholder="e.g. Distribution takes place around back at Fellowship Hall door near blue awning."
+                className={inputClass}
               />
+              <p className="text-[11px] text-[#86868b] mt-1">
+                Helps citizens and delivery drivers find the exact door on large church or warehouse campuses.
+              </p>
             </div>
           </div>
 
@@ -114,7 +259,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
                   type="text"
                   required
                   value={formData.name}
-                  onChange={(e) => handleChange('name', e.target.value)}
+                  onChange={(e) => handleChange("name", e.target.value)}
                   className={inputClass}
                 />
               </div>
@@ -124,7 +269,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
                 <input
                   type="text"
                   value={formData.organization}
-                  onChange={(e) => handleChange('organization', e.target.value)}
+                  onChange={(e) => handleChange("organization", e.target.value)}
                   className={inputClass}
                 />
               </div>
@@ -135,26 +280,9 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
               <textarea
                 rows={3}
                 value={formData.description}
-                onChange={(e) => handleChange('description', e.target.value)}
+                onChange={(e) => handleChange("description", e.target.value)}
                 className={inputClass}
               />
-            </div>
-
-            {/* Capacity */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[13px] font-semibold text-[#1d1d1f]">Storage capacity</label>
-                <span className="text-[13px] font-bold text-[#0071e3]">{formData.capacityPercentage}%</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={formData.capacityPercentage}
-                onChange={(e) => handleChange('capacityPercentage', Number(e.target.value))}
-                className="w-full accent-[#0071e3] cursor-pointer"
-              />
-              <p className="text-[12px] text-[#86868b] mt-1">Helps food banks prioritize delivery drops</p>
             </div>
           </div>
 
@@ -171,7 +299,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
                 type="text"
                 required
                 value={formData.address}
-                onChange={(e) => handleChange('address', e.target.value)}
+                onChange={(e) => handleChange("address", e.target.value)}
                 className={inputClass}
               />
             </div>
@@ -183,7 +311,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
                   type="text"
                   required
                   value={formData.city}
-                  onChange={(e) => handleChange('city', e.target.value)}
+                  onChange={(e) => handleChange("city", e.target.value)}
                   className={inputClass}
                 />
               </div>
@@ -193,7 +321,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
                   type="text"
                   required
                   value={formData.state}
-                  onChange={(e) => handleChange('state', e.target.value)}
+                  onChange={(e) => handleChange("state", e.target.value)}
                   className={inputClass}
                 />
               </div>
@@ -203,129 +331,10 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
                   type="text"
                   required
                   value={formData.zip}
-                  onChange={(e) => handleChange('zip', e.target.value)}
+                  onChange={(e) => handleChange("zip", e.target.value)}
                   className={inputClass}
                 />
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">Phone</label>
-                <input
-                  type="text"
-                  value={formData.phone}
-                  onChange={(e) => handleChange('phone', e.target.value)}
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">Email</label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => handleChange('email', e.target.value)}
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">Website</label>
-                <input
-                  type="url"
-                  value={formData.website}
-                  onChange={(e) => handleChange('website', e.target.value)}
-                  className={inputClass}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Precise Satellite Geolocation & Pinpoint Entrance Verifier */}
-          <div className="card p-5 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-[#e5e5ea]">
-              <div className="flex items-center gap-2">
-                <MapPin className="w-[18px] h-[18px] text-[#0071e3]" />
-                <h2 className="text-[14px] font-semibold text-[#1d1d1f]">Precise Satellite Building Pinpoint</h2>
-              </div>
-              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[#34c759]/10 text-[#34c759] border border-[#34c759]/20">
-                🟢 Level 3 Field Verified
-              </span>
-            </div>
-
-            <p className="text-[12px] text-[#86868b]">
-              Rural addresses often geocode to highway midpoints or empty fields. Drag the marker directly onto your actual building structure or distribution entrance door on the satellite map below.
-            </p>
-
-            {/* Interactive Satellite Pin Map Preview */}
-            <div className="relative rounded-2xl overflow-hidden border border-[#e5e5ea] h-64 bg-[#1c1c1e] flex flex-col justify-between p-4 text-white shadow-inner">
-              <div className="absolute inset-0 opacity-40 bg-[radial-gradient(#34c759_1px,transparent_1px)] [background-size:16px_16px]" />
-              
-              <div className="relative z-10 flex items-center justify-between">
-                <span className="text-[11px] font-semibold bg-black/70 px-2.5 py-1 rounded-lg backdrop-blur-md border border-white/10 text-white">
-                  🛰️ Satellite Pin-Placement Active
-                </span>
-                <span className="text-[11px] font-mono bg-black/70 px-2.5 py-1 rounded-lg backdrop-blur-md border border-white/10 text-emerald-400">
-                  Lat: 32.379210 | Lng: -86.307742
-                </span>
-              </div>
-
-              {/* Pin Representation */}
-              <div className="relative z-10 mx-auto text-center my-auto space-y-1 animate-bounce">
-                <div className="w-10 h-10 bg-[#0071e3] text-white rounded-full flex items-center justify-center mx-auto shadow-xl ring-4 ring-white/30">
-                  <MapPin className="w-6 h-6 fill-current" />
-                </div>
-                <span className="inline-block bg-black/80 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-md backdrop-blur-md">
-                  Pantry Entrance Door Pin
-                </span>
-              </div>
-
-              <div className="relative z-10 text-[11px] text-white/80 bg-black/60 p-2.5 rounded-xl border border-white/10 flex items-center justify-between">
-                <span>Drag pin to exact distribution door</span>
-                <button type="button" className="text-[#0071e3] font-semibold hover:underline cursor-pointer">
-                  Confirm Pin Location
-                </button>
-              </div>
-            </div>
-
-            {/* Physical Entrance Landmark Notes */}
-            <div>
-              <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">
-                Landmark & Physical Entrance Instructions
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. Distribution takes place around back at the Fellowship Hall door near the blue awning."
-                className={inputClass}
-                defaultValue="Distribution is held at the rear Fellowship Hall entrance door behind the blue awning."
-              />
-              <p className="text-[11px] text-[#86868b] mt-1">
-                Helps citizens and delivery drivers find the exact door on large church or warehouse campuses.
-              </p>
-            </div>
-          </div>
-
-          {/* Hands-Free SMS Check-In Preferences */}
-          <div className="card p-5 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-[#e5e5ea]">
-              <div className="flex items-center gap-2">
-                <Clock className="w-[18px] h-[18px] text-[#0071e3]" />
-                <h2 className="text-[14px] font-semibold text-[#1d1d1f]">Hands-Free Morning SMS Check-In</h2>
-              </div>
-              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[#0071e3]/10 text-[#0071e3]">
-                Free Volunteer Feature
-              </span>
-            </div>
-
-            <p className="text-[12px] text-[#86868b]">
-              Receive an automated SMS every distribution morning. Reply 1 for Open, 2 for Low Stock, 3 for Closed. Updates your pantry status instantly without needing a computer or password.
-            </p>
-
-            <div className="flex items-center justify-between p-3.5 rounded-xl bg-[#f5f5f7] border border-[#e5e5ea]">
-              <div>
-                <p className="text-[13px] font-semibold text-[#1d1d1f]">Enable Daily 8:00 AM SMS Check-In Prompt</p>
-                <p className="text-[12px] text-[#86868b]">Sent to pantry manager phone: (334) 555-0192</p>
-              </div>
-              <input type="checkbox" defaultChecked className="w-4 h-4 accent-[#0071e3] cursor-pointer" />
             </div>
           </div>
         </form>
@@ -342,28 +351,28 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
               <div>
                 <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[#34c759] mb-1">
                   <ShieldCheck className="w-3.5 h-3.5" />
-                  Verified Organization
+                  Verified Organization ($0 Free)
                 </div>
                 <h3 className="text-[14px] font-semibold text-[#1d1d1f]">{formData.name}</h3>
                 <p className="text-[12px] text-[#86868b]">{formData.city}, {formData.state}</p>
               </div>
 
               <div className="flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full ${formData.isOpen ? 'bg-[#34c759]' : 'bg-[#ff3b30]'}`} />
+                <span className={`w-2 h-2 rounded-full ${formData.isOpen ? "bg-[#34c759]" : "bg-[#ff3b30]"}`} />
                 <span className="text-[12px] font-semibold text-[#1d1d1f]">
-                  {formData.isOpen ? 'Open now' : 'Closed'}
+                  {formData.isOpen ? "Open now" : "Closed"}
                 </span>
               </div>
 
-              {formData.openNote && (
+              <p className="text-[11px] text-[#0071e3] font-mono">
+                📍 Coordinates: {coords.lat}, {coords.lng}
+              </p>
+
+              {accessNotes && (
                 <p className="text-[12px] text-[#1d1d1f] bg-[#f5f5f7] p-2.5 rounded-xl border border-[#e5e5ea] leading-relaxed">
-                  "{formData.openNote}"
+                  "{accessNotes}"
                 </p>
               )}
-
-              <p className="text-[11px] text-[#86868b] font-medium">
-                {formData.servedThisWeek} families served this week
-              </p>
             </div>
           </div>
 
@@ -373,7 +382,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
             <p className="text-[12px] text-[#86868b]">
               Print a flyer with your AccessBelt QR Code for your entrance so waiting families can scan for live stock.
             </p>
-            
+
             <div className="p-4 rounded-xl bg-[#f5f5f7] border border-[#e5e5ea] text-center space-y-2">
               <div className="w-24 h-24 bg-white border border-[#e5e5ea] rounded-xl mx-auto p-2 flex items-center justify-center">
                 <img

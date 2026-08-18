@@ -46,6 +46,9 @@ export interface PantryInfo {
   verifiedBy: string;
   distributionType: 'Walk-in & Drive-thru' | 'Walk-in Only' | 'Drive-thru Only' | 'Appointment Only';
   locations: PantryLocation[];
+  latitude?: number;
+  longitude?: number;
+  accessNotes?: string;
   coordinates: {
     lat: number;
     lng: number;

@@ -10,8 +10,8 @@ import {
   ChevronRight,
   LogOut,
   Zap,
-  CreditCard,
-  HelpCircle,
+  
+  HelpCircle, ShieldCheck,
 } from 'lucide-react';
 import type { PantryInfo } from '../../types';
 
@@ -46,11 +46,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const settingsNav = [
     { label: 'Pantry profile', path: '/profile', icon: Building2 },
-    { label: 'Billing & plan', path: '/billing', icon: CreditCard },
+    { label: 'Free Services ($0)', path: '/billing', icon: ShieldCheck, badge: '$0 Free' },
   ];
 
   const helpNav = [
-    { label: 'Onboarding Guide', path: '/onboarding', icon: HelpCircle, badge: 'New' },
+    { label: 'Onboarding Guide', path: '/onboarding', icon: HelpCircle, ShieldCheck, badge: 'New' },
   ];
 
   const linkClasses = ({ isActive }: { isActive: boolean }) => `
