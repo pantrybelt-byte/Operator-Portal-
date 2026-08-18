@@ -239,6 +239,95 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
               </div>
             </div>
           </div>
+
+          {/* Precise Satellite Geolocation & Pinpoint Entrance Verifier */}
+          <div className="card p-5 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#e5e5ea]">
+              <div className="flex items-center gap-2">
+                <MapPin className="w-[18px] h-[18px] text-[#0071e3]" />
+                <h2 className="text-[14px] font-semibold text-[#1d1d1f]">Precise Satellite Building Pinpoint</h2>
+              </div>
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[#34c759]/10 text-[#34c759] border border-[#34c759]/20">
+                🟢 Level 3 Field Verified
+              </span>
+            </div>
+
+            <p className="text-[12px] text-[#86868b]">
+              Rural addresses often geocode to highway midpoints or empty fields. Drag the marker directly onto your actual building structure or distribution entrance door on the satellite map below.
+            </p>
+
+            {/* Interactive Satellite Pin Map Preview */}
+            <div className="relative rounded-2xl overflow-hidden border border-[#e5e5ea] h-64 bg-[#1c1c1e] flex flex-col justify-between p-4 text-white shadow-inner">
+              <div className="absolute inset-0 opacity-40 bg-[radial-gradient(#34c759_1px,transparent_1px)] [background-size:16px_16px]" />
+              
+              <div className="relative z-10 flex items-center justify-between">
+                <span className="text-[11px] font-semibold bg-black/70 px-2.5 py-1 rounded-lg backdrop-blur-md border border-white/10 text-white">
+                  🛰️ Satellite Pin-Placement Active
+                </span>
+                <span className="text-[11px] font-mono bg-black/70 px-2.5 py-1 rounded-lg backdrop-blur-md border border-white/10 text-emerald-400">
+                  Lat: 32.379210 | Lng: -86.307742
+                </span>
+              </div>
+
+              {/* Pin Representation */}
+              <div className="relative z-10 mx-auto text-center my-auto space-y-1 animate-bounce">
+                <div className="w-10 h-10 bg-[#0071e3] text-white rounded-full flex items-center justify-center mx-auto shadow-xl ring-4 ring-white/30">
+                  <MapPin className="w-6 h-6 fill-current" />
+                </div>
+                <span className="inline-block bg-black/80 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-md backdrop-blur-md">
+                  Pantry Entrance Door Pin
+                </span>
+              </div>
+
+              <div className="relative z-10 text-[11px] text-white/80 bg-black/60 p-2.5 rounded-xl border border-white/10 flex items-center justify-between">
+                <span>Drag pin to exact distribution door</span>
+                <button type="button" className="text-[#0071e3] font-semibold hover:underline cursor-pointer">
+                  Confirm Pin Location
+                </button>
+              </div>
+            </div>
+
+            {/* Physical Entrance Landmark Notes */}
+            <div>
+              <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">
+                Landmark & Physical Entrance Instructions
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Distribution takes place around back at the Fellowship Hall door near the blue awning."
+                className={inputClass}
+                defaultValue="Distribution is held at the rear Fellowship Hall entrance door behind the blue awning."
+              />
+              <p className="text-[11px] text-[#86868b] mt-1">
+                Helps citizens and delivery drivers find the exact door on large church or warehouse campuses.
+              </p>
+            </div>
+          </div>
+
+          {/* Hands-Free SMS Check-In Preferences */}
+          <div className="card p-5 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#e5e5ea]">
+              <div className="flex items-center gap-2">
+                <Clock className="w-[18px] h-[18px] text-[#0071e3]" />
+                <h2 className="text-[14px] font-semibold text-[#1d1d1f]">Hands-Free Morning SMS Check-In</h2>
+              </div>
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[#0071e3]/10 text-[#0071e3]">
+                Free Volunteer Feature
+              </span>
+            </div>
+
+            <p className="text-[12px] text-[#86868b]">
+              Receive an automated SMS every distribution morning. Reply 1 for Open, 2 for Low Stock, 3 for Closed. Updates your pantry status instantly without needing a computer or password.
+            </p>
+
+            <div className="flex items-center justify-between p-3.5 rounded-xl bg-[#f5f5f7] border border-[#e5e5ea]">
+              <div>
+                <p className="text-[13px] font-semibold text-[#1d1d1f]">Enable Daily 8:00 AM SMS Check-In Prompt</p>
+                <p className="text-[12px] text-[#86868b]">Sent to pantry manager phone: (334) 555-0192</p>
+              </div>
+              <input type="checkbox" defaultChecked className="w-4 h-4 accent-[#0071e3] cursor-pointer" />
+            </div>
+          </div>
         </form>
 
         {/* Right: Preview & QR Code Poster */}

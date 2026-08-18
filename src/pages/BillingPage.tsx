@@ -56,6 +56,24 @@ export const BillingPage: React.FC<BillingPageProps> = ({ subscription, teamMemb
         </button>
       </div>
 
+      {/* Free Plan Banner for Community Pantries */}
+      <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 bg-emerald-500/20 px-2.5 py-0.5 rounded-md">
+              $0 Free Forever
+            </span>
+            <h3 className="text-[14px] font-bold text-emerald-900">Community Food Pantry Tier</h3>
+          </div>
+          <p className="text-[12px] text-emerald-800">
+            AccessBelt Operator Portal is 100% free for community food pantries & distribution centers, funded by B2B agency analytics subscriptions.
+          </p>
+        </div>
+        <span className="text-xs font-semibold text-emerald-700 bg-white px-3 py-1.5 rounded-xl border border-emerald-200 shadow-xs shrink-0">
+          ✅ Verified Free Access
+        </span>
+      </div>
+
       {activeTab === 'plan' ? (
         <div className="space-y-5">
           {/* Active Plan Card */}

@@ -134,6 +134,29 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
       </div>
 
+      {/* Quick Action Toolbar for Default Free Pantry Services */}
+      <div className="card p-4 bg-[#f5f5f7] border border-[#e5e5ea] flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="space-y-0.5">
+          <p className="text-[13px] font-bold text-[#1d1d1f]">Pantry Free Default Services</p>
+          <p className="text-[12px] text-[#86868b]">Broadcast emergency needs, share extra food surplus, or export board impact reports.</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => navigate("/notifications")}
+            className="px-3.5 py-2 bg-[#0071e3] hover:bg-[#0077ed] text-white text-[12px] font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+          >
+            <Bell className="w-3.5 h-3.5" />
+            <span>Broadcast Need / Surplus</span>
+          </button>
+          <button
+            onClick={() => window.print()}
+            className="px-3.5 py-2 bg-white border border-[#e5e5ea] hover:border-[#d2d2d7] text-[#1d1d1f] text-[12px] font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+          >
+            🖨️ Export Board Report PDF
+          </button>
+        </div>
+      </div>
+
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Left: Quick Links & Low Stock */}
