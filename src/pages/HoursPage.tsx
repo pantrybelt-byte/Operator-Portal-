@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
-import { Clock, Calendar, Plus, Trash2, Save, X } from 'lucide-react';
+import { Plus, Trash2, Save, X } from 'lucide-react';
 import type { DaySchedule, SpecialClosure } from '../types';
+import { formatCalendarDate } from '../lib/datetime';
 
 
 interface HoursPageProps {
   schedule: DaySchedule[];
   closures: SpecialClosure[];
   onSaveSchedule: (newSchedule: DaySchedule[]) => void;
-  onAddClosure: (closure: Omit<SpecialClosure, 'id'>) => void;
+  onAddClosure: (closure: Omit<SpecialClosure, 'id' | 'orgId' | 'pantryId'>) => void;
   onDeleteClosure: (id: string) => void;
 }
 
@@ -65,15 +66,15 @@ export const HoursPage: React.FC<HoursPageProps> = ({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#1d1d1f] tracking-tight font-display">Operating hours</h1>
-          <p className="text-[14px] text-[#86868b] mt-0.5">
+          <h1 className="page-title">Operating hours</h1>
+          <p className="text-base text-fg-muted mt-0.5">
             Set your weekly schedule and holiday closures
           </p>
         </div>
 
         <button
           onClick={handleSave}
-          className="px-4 py-2 bg-[#0071e3] hover:bg-[#0077ed] text-white text-[13px] font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+          className="px-4 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
         >
           <Save className="w-4 h-4" />
           <span>{isSaved ? 'Saved' : 'Save schedule'}</span>
@@ -84,40 +85,37 @@ export const HoursPage: React.FC<HoursPageProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Weekly Schedule */}
         <div className="lg:col-span-2 card p-5 space-y-4">
-          <div className="flex items-center gap-2 pb-3 border-b border-[#e5e5ea]">
-            <Clock className="w-[18px] h-[18px] text-[#0071e3]" />
-            <h2 className="text-[14px] font-semibold text-[#1d1d1f]">Weekly schedule</h2>
-          </div>
+          <h2 className="card-title border-b border-line pb-4">Weekly schedule</h2>
 
           <div className="space-y-2">
             {schedule.map((item, idx) => (
               <div
                 key={item.day}
                 className={`
-                  p-3.5 rounded-xl border border-[#e5e5ea] flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors
-                  ${!item.isOpen ? 'bg-[#f5f5f7]' : 'bg-white'}
+                  p-3.5 rounded-xl border border-line flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors
+                  ${!item.isOpen ? 'bg-sunken' : 'bg-surface'}
                 `}
               >
                 {/* Day & Toggle */}
-                <div className="flex items-center gap-3 min-w-[140px]">
+                <div className="flex w-[118px] shrink-0 items-center gap-3">
                   <button
                     type="button"
                     onClick={() => handleToggleDay(idx)}
                     className={`
                       w-9 h-5 rounded-full p-0.5 transition-colors duration-200 cursor-pointer relative
-                      ${item.isOpen ? 'bg-[#34c759]' : 'bg-[#d2d2d7]'}
+                      ${item.isOpen ? 'bg-success' : 'bg-line-strong'}
                     `}
                   >
                     <span
                       className={`
-                        w-4 h-4 rounded-full bg-white shadow-xs transform transition-transform duration-200 block
+                        w-4 h-4 rounded-full bg-surface shadow-xs transform transition-transform duration-200 block
                         ${item.isOpen ? 'translate-x-4' : 'translate-x-0'}
                       `}
                     />
                   </button>
                   <div>
-                    <p className="text-[13px] font-semibold text-[#1d1d1f]">{item.day}</p>
-                    <span className={`text-[11px] font-semibold ${item.isOpen ? 'text-[#34c759]' : 'text-[#86868b]'}`}>
+                    <p className="text-sm font-semibold text-fg">{item.day}</p>
+                    <span className={`text-xs font-semibold ${item.isOpen ? 'text-success-text' : 'text-fg-muted'}`}>
                       {item.isOpen ? 'Open' : 'Closed'}
                     </span>
                   </div>
@@ -125,40 +123,40 @@ export const HoursPage: React.FC<HoursPageProps> = ({
 
                 {/* Time Pickers */}
                 {item.isOpen ? (
-                  <div className="flex-1 grid grid-cols-2 gap-2 sm:max-w-xs">
+                  <div className="grid grid-cols-2 gap-2 sm:w-[236px] sm:shrink-0">
                     <div>
-                      <label className="text-[11px] font-medium text-[#86868b] block mb-0.5">Opens</label>
+                      <label className="mb-1 block text-xs font-medium text-fg-muted">Opens</label>
                       <input
                         type="time"
                         value={item.openTime}
                         onChange={(e) => handleTimeChange(idx, 'openTime', e.target.value)}
-                        className="w-full text-[13px] p-1.5 rounded-lg border border-[#e5e5ea] focus:outline-none focus:border-[#0071e3] bg-white"
+                        className="w-full px-2 py-2"
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] font-medium text-[#86868b] block mb-0.5">Closes</label>
+                      <label className="mb-1 block text-xs font-medium text-fg-muted">Closes</label>
                       <input
                         type="time"
                         value={item.closeTime}
                         onChange={(e) => handleTimeChange(idx, 'closeTime', e.target.value)}
-                        className="w-full text-[13px] p-1.5 rounded-lg border border-[#e5e5ea] focus:outline-none focus:border-[#0071e3] bg-white"
+                        className="w-full px-2 py-2"
                       />
                     </div>
                   </div>
                 ) : (
-                  <div className="flex-1 text-[13px] text-[#86868b] font-medium">
+                  <div className="flex items-center text-sm font-medium text-fg-muted sm:w-[236px] sm:shrink-0">
                     Closed for distribution
                   </div>
                 )}
 
                 {/* Notes */}
-                <div className="sm:w-44">
+                <div className="min-w-0 flex-1">
                   <input
                     type="text"
                     placeholder="Add a note…"
                     value={item.notes || ''}
                     onChange={(e) => handleTimeChange(idx, 'notes', e.target.value)}
-                    className="w-full text-[12px] p-1.5 rounded-lg border border-[#e5e5ea] focus:outline-none focus:border-[#0071e3] bg-white placeholder:text-[#86868b]"
+                    className="w-full p-2 text-sm"
                   />
                 </div>
               </div>
@@ -168,35 +166,32 @@ export const HoursPage: React.FC<HoursPageProps> = ({
 
         {/* Right: Special Closures */}
         <div className="card p-5 space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-[#e5e5ea]">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-[18px] h-[18px] text-[#ff3b30]" />
-              <h2 className="text-[14px] font-semibold text-[#1d1d1f]">Closures</h2>
-            </div>
+          <div className="flex items-center justify-between pb-3 border-b border-line">
+            <h2 className="card-title">Closures</h2>
             <button
               onClick={() => setShowClosureModal(true)}
-              className="text-[12px] font-semibold text-[#0071e3] hover:underline cursor-pointer flex items-center gap-1"
+              className="flex items-center gap-1 text-sm font-semibold text-accent-text hover:underline"
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus className="h-3.5 w-3.5" />
               Add
             </button>
           </div>
 
           <div className="space-y-2">
             {closures.length === 0 ? (
-              <p className="text-[13px] text-[#86868b] py-4 text-center">No closures scheduled</p>
+              <p className="text-sm text-fg-muted py-4 text-center">No closures scheduled</p>
             ) : (
               closures.map((c) => (
-                <div key={c.id} className="p-3.5 rounded-xl bg-[#f5f5f7] border border-[#e5e5ea]">
+                <div key={c.id} className="p-3.5 rounded-xl bg-sunken border border-line">
                   <div className="flex items-start justify-between">
                     <div>
-                      <p className="text-[13px] font-semibold text-[#1d1d1f]">{c.title}</p>
-                      <p className="text-[12px] text-[#0071e3] font-semibold mt-0.5">{c.startDate}</p>
-                      {c.reason && <p className="text-[12px] text-[#86868b] mt-0.5">{c.reason}</p>}
+                      <p className="text-sm font-semibold text-fg">{c.title}</p>
+                      <p className="meta mt-0.5">{formatCalendarDate(c.startDate)}</p>
+                      {c.reason && <p className="text-xs text-fg-muted mt-0.5">{c.reason}</p>}
                     </div>
                     <button
                       onClick={() => onDeleteClosure(c.id)}
-                      className="text-[#86868b] hover:text-[#ff3b30] p-1 cursor-pointer"
+                      className="text-fg-muted hover:text-danger-text p-1 cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -210,62 +205,62 @@ export const HoursPage: React.FC<HoursPageProps> = ({
 
       {/* Add Closure Modal */}
       {showClosureModal && (
-        <div className="fixed inset-0 z-50 bg-black/30 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-[#e5e5ea]">
-            <div className="flex items-center justify-between mb-5 border-b border-[#e5e5ea] pb-3">
-              <h3 className="text-base font-bold text-[#1d1d1f]">Add closure date</h3>
-              <button onClick={() => setShowClosureModal(false)} className="p-1 rounded-lg text-[#86868b] hover:text-[#1d1d1f] hover:bg-black/[0.04]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-line bg-surface p-6 shadow-xl">
+            <div className="flex items-center justify-between mb-5 border-b border-line pb-3">
+              <h3 className="card-title">Add closure date</h3>
+              <button onClick={() => setShowClosureModal(false)} className="rounded-md p-1 text-fg-muted transition-colors hover:bg-sunken hover:text-fg">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <form onSubmit={handleCreateClosure} className="space-y-4">
               <div>
-                <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">Title</label>
+                <label className="field-label">Title</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Thanksgiving Holiday"
                   value={closureTitle}
                   onChange={(e) => setClosureTitle(e.target.value)}
-                  className="w-full text-[13px] p-2.5 rounded-xl border border-[#e5e5ea] focus:outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/20 bg-white placeholder:text-[#86868b]"
+                  className="w-full text-sm p-2.5 rounded-xl border border-line focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 bg-surface placeholder:text-fg-muted"
                 />
               </div>
 
               <div>
-                <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">Date</label>
+                <label className="field-label">Date</label>
                 <input
                   type="date"
                   required
                   value={closureDate}
                   onChange={(e) => setClosureDate(e.target.value)}
-                  className="w-full text-[13px] p-2.5 rounded-xl border border-[#e5e5ea] focus:outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/20 bg-white"
+                  className="w-full text-sm p-2.5 rounded-xl border border-line focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 bg-surface"
                 />
               </div>
 
               <div>
-                <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">
-                  Reason <span className="text-[#86868b] font-normal">(optional)</span>
+                <label className="field-label">
+                  Reason <span className="text-fg-muted font-normal">(optional)</span>
                 </label>
                 <textarea
                   rows={2}
                   placeholder="e.g. Closed for holiday observance"
                   value={closureReason}
                   onChange={(e) => setClosureReason(e.target.value)}
-                  className="w-full text-[13px] p-2.5 rounded-xl border border-[#e5e5ea] focus:outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/20 bg-white placeholder:text-[#86868b]"
+                  className="w-full text-sm p-2.5 rounded-xl border border-line focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 bg-surface placeholder:text-fg-muted"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#e5e5ea]">
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-line">
                 <button
                   type="button"
                   onClick={() => setShowClosureModal(false)}
-                  className="px-4 py-2 text-[13px] font-semibold text-[#86868b] hover:text-[#1d1d1f] rounded-xl hover:bg-black/[0.04] transition-colors cursor-pointer"
+                  className="px-4 py-2 text-sm font-semibold text-fg-muted hover:text-fg rounded-xl hover:bg-black/[0.04] transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-[13px] font-semibold bg-[#ff3b30] text-white rounded-xl hover:bg-[#e03126] transition-colors cursor-pointer shadow-xs"
+                  className="px-5 py-2 text-sm font-semibold bg-danger-text text-white rounded-lg hover:bg-danger-text transition-colors cursor-pointer shadow-xs"
                 >
                   Add closure
                 </button>

@@ -42,7 +42,6 @@ function buildConfig(): FirebaseOptions {
 }
 
 let cachedApp: FirebaseApp | null = null;
-let cachedFirestore: Firestore | null = null;
 let cachedAuth: Auth | null = null;
 let initialisationError: Error | null = null;
 
@@ -66,25 +65,48 @@ export function getFirebaseApp(): FirebaseApp | null {
 }
 
 /**
- * Named Firestore database dedicated to this portal, separate from the
- * consumer app's `(default)` database (and from the Agency Dashboard's own
- * `accessbelt-agency` database) so each product's collections stay in
- * their own namespace instead of one shared list.
+ * Two databases, on purpose.
+ *
+ * `(default)` is shared with the consumer Expo app and holds `resources` —
+ * the collection the phone app reads. Pantry identity, address, hours and
+ * coordinates are written straight there so an operator's edit is visible to
+ * families with no sync step in between.
+ *
+ * `accessbelt-operator` is portal-owned and holds the concepts `resources`
+ * has no field for: inventory, broadcasts, closures, activity.
+ *
+ * See src/data/schema.ts for which collection lives where.
  */
-const DATABASE_ID = 'accessbelt-operator';
+const OPERATOR_DATABASE_ID = 'accessbelt-operator';
 
-export function getDb(): Firestore | null {
-  if (cachedFirestore) return cachedFirestore;
+const dbCache = new Map<string, Firestore>();
+
+function firestoreFor(databaseId?: string): Firestore | null {
+  const key = databaseId ?? '(default)';
+  const cached = dbCache.get(key);
+  if (cached) return cached;
+
   const app = getFirebaseApp();
   if (!app) return null;
 
   try {
-    cachedFirestore = getFirestore(app, DATABASE_ID);
-    return cachedFirestore;
+    const db = databaseId ? getFirestore(app, databaseId) : getFirestore(app);
+    dbCache.set(key, db);
+    return db;
   } catch (error) {
-    console.error('[firebase] Firestore unavailable, falling back to demo data:', error);
+    console.error(`[firebase] Firestore "${key}" unavailable:`, error);
     return null;
   }
+}
+
+/** `(default)` — shared with the consumer app. Contains `resources`. */
+export function getSharedDb(): Firestore | null {
+  return firestoreFor();
+}
+
+/** `accessbelt-operator` — portal-owned collections. */
+export function getOperatorDb(): Firestore | null {
+  return firestoreFor(OPERATOR_DATABASE_ID);
 }
 
 export function getFirebaseAuth(): Auth | null {
@@ -104,7 +126,7 @@ export function getFirebaseAuth(): Auth | null {
 /** Test seam — clears the memoised handles. */
 export function resetFirebaseForTests(): void {
   cachedApp = null;
-  cachedFirestore = null;
   cachedAuth = null;
   initialisationError = null;
+  dbCache.clear();
 }

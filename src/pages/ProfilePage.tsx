@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Building2, MapPin, Save, ShieldCheck, Navigation } from "lucide-react";
+import { Save, ShieldCheck, Navigation, Printer } from "lucide-react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import type { PantryInfo } from "../types";
+import type { Operator, PantryInfo } from "../types";
+import { can, coversCounty } from "../auth/permissions";
 
 // Custom Leaflet Pin Icon
 const pinIcon = L.icon({
@@ -16,21 +17,19 @@ const pinIcon = L.icon({
 });
 
 interface ProfilePageProps {
+  operator: Operator;
   pantry: PantryInfo;
   onUpdatePantry: (updated: PantryInfo) => void;
 }
 
-export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry }) => {
+export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, operator, onUpdatePantry }) => {
   const [formData, setFormData] = useState<PantryInfo>(pantry);
   const [isSaved, setIsSaved] = useState(false);
 
   // Precise Geolocation Coordinates State
-  const [coords, setCoords] = useState<{ lat: number; lng: number }>({
-    lat: pantry.latitude || 32.3792,
-    lng: pantry.longitude || -86.3077,
-  });
+  const [coords, setCoords] = useState<{ lat: number; lng: number }>(pantry.coordinates);
   const [isLocating, setIsLocating] = useState(false);
-  const [geoStatus, setGeoStatus] = useState<string>("Default Montgomery Coordinates");
+  const [geoStatus, setGeoStatus] = useState<string>("");
   const [accessNotes, setAccessNotes] = useState(
     pantry.accessNotes || "Distribution takes place around back at the Fellowship Hall door near the blue awning."
   );
@@ -47,9 +46,8 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
     e.preventDefault();
     onUpdatePantry({
       ...formData,
-      latitude: coords.lat,
-      longitude: coords.lng,
-      accessNotes: accessNotes,
+      coordinates: coords,
+      accessNotes,
     });
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 3000);
@@ -62,7 +60,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
       return;
     }
     setIsLocating(true);
-    setGeoStatus("Detecting your physical GPS location...");
+    setGeoStatus("Finding your location…");
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
@@ -70,16 +68,16 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
         const newLng = Number(position.coords.longitude.toFixed(6));
         setCoords({ lat: newLat, lng: newLng });
         setIsLocating(false);
-        setGeoStatus(`🟢 Centered on GPS Location (Accuracy ±${Math.round(position.coords.accuracy)}m)`);
+        setGeoStatus(`Centred on your location (accurate to ±${Math.round(position.coords.accuracy)}m)`);
 
         if (mapInstanceRef.current && markerRef.current) {
           mapInstanceRef.current.setView([newLat, newLng], 17);
           markerRef.current.setLatLng([newLat, newLng]);
         }
       },
-      (error) => {
+      () => {
         setIsLocating(false);
-        setGeoStatus(`Unable to retrieve location (${error.message}). Using manual drag pin.`);
+        setGeoStatus("Could not find your location. Drag the pin instead.");
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
@@ -102,7 +100,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
         icon: pinIcon,
       }).addTo(map);
 
-      marker.bindPopup("<b>Exact Pantry Door Pin</b><br>Drag marker to exact distribution entrance.").openPopup();
+      marker.bindPopup("Drag this pin to your distribution entrance.");
 
       marker.on("dragend", () => {
         const latLng = marker.getLatLng();
@@ -110,7 +108,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
           lat: Number(latLng.lat.toFixed(6)),
           lng: Number(latLng.lng.toFixed(6)),
         });
-        setGeoStatus("🟡 Operator Satellited Pin Positioned");
+        setGeoStatus("Pin moved — remember to save");
       });
 
       map.on("click", (e: L.LeafletMouseEvent) => {
@@ -120,7 +118,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
           lng: Number(lng.toFixed(6)),
         });
         marker.setLatLng([lat, lng]);
-        setGeoStatus("🟡 Operator Satellited Pin Positioned");
+        setGeoStatus("Pin moved — remember to save");
       });
 
       mapInstanceRef.current = map;
@@ -138,25 +136,36 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
     };
   }, []);
 
-  const inputClass = "w-full text-[13px] p-2.5 rounded-xl border border-[#e5e5ea] focus:outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/20 bg-white placeholder:text-[#86868b]";
+  const inputClass = "w-full p-2.5";
+
+  // Surfaced before the write rather than after: `countyOk()` rejects any edit
+  // to a pantry outside the operator's county claim, and a bare
+  // permission-denied tells them nothing actionable.
+  const inCounty = coversCounty(operator.claims.counties, pantry.county, operator.claims.role);
+  const canEdit = can(operator.title, "profile:write") && inCounty;
+  const editBlockedReason = !inCounty
+    ? `Your account does not cover ${pantry.county} County.`
+    : "Only a Manager can edit the pantry profile.";
 
   return (
-    <div className="space-y-5 font-sans">
+    <div className="space-y-5 pb-20 lg:pb-0">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#1d1d1f] tracking-tight font-display">Pantry profile</h1>
-          <p className="text-[14px] text-[#86868b] mt-0.5">
-            Manage your location pinpoint, verification status, and public listing details
+          <h1 className="page-title">Pantry profile</h1>
+          <p className="page-subtitle">
+            How your pantry appears to families in the AccessBelt app
           </p>
         </div>
 
         <button
           onClick={handleSubmit}
-          className="px-4 py-2 bg-[#0071e3] hover:bg-[#0077ed] text-white text-[13px] font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+          className="btn btn-primary hidden sm:inline-flex"
+          disabled={!canEdit}
+          title={canEdit ? undefined : editBlockedReason}
         >
-          <Save className="w-4 h-4" />
-          <span>{isSaved ? "Saved!" : "Save changes"}</span>
+          <Save className="h-4 w-4" />
+          {isSaved ? "Saved" : "Save changes"}
         </button>
       </div>
 
@@ -166,14 +175,11 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
         <form onSubmit={handleSubmit} className="lg:col-span-2 space-y-5">
           {/* Organization Verification Section */}
           <div className="card p-5 space-y-4">
-            <div className="flex items-center gap-2 pb-3 border-b border-[#e5e5ea]">
-              <ShieldCheck className="w-[18px] h-[18px] text-[#34c759]" />
-              <h2 className="text-[14px] font-semibold text-[#1d1d1f]">Verification & Non-Profit Status</h2>
-            </div>
+            <h2 className="card-title border-b border-line pb-4">Verification</h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">501(c)(3) Tax ID / EIN</label>
+                <label className="field-label">501(c)(3) tax ID (EIN)</label>
                 <input
                   type="text"
                   required
@@ -184,10 +190,10 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
               </div>
 
               <div>
-                <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">Verification Status</label>
-                <div className="p-2.5 rounded-xl bg-[#34c759]/10 border border-[#34c759]/20 text-[#34c759] text-[13px] font-semibold flex items-center gap-2">
+                <label className="field-label">Status</label>
+                <div className="p-2.5 rounded-xl bg-success-tint border border-success/20 text-success-text text-sm font-semibold flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 shrink-0" />
-                  <span>{formData.verificationStatus} ($0 Free Community Access)</span>
+                  <span>{formData.verified ? "Verified 501(c)(3)" : "Verification pending"}</span>
                 </div>
               </div>
             </div>
@@ -195,42 +201,40 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
 
           {/* Interactive Geolocation Satellite Pinpoint Component */}
           <div className="card p-5 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-[#e5e5ea]">
-              <div className="flex items-center gap-2">
-                <MapPin className="w-[18px] h-[18px] text-[#0071e3]" />
-                <h2 className="text-[14px] font-semibold text-[#1d1d1f]">Interactive Location Pinpoint</h2>
-              </div>
+            <div className="flex items-center justify-between pb-3 border-b border-line">
+              <h2 className="card-title">Map location</h2>
               <button
                 type="button"
                 onClick={handleDetectLocation}
                 disabled={isLocating}
-                className="px-3 py-1 bg-[#0071e3]/10 hover:bg-[#0071e3]/20 text-[#0071e3] text-[12px] font-semibold rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer border border-[#0071e3]/20"
+                className="btn btn-secondary"
               >
-                <Navigation className={`w-3.5 h-3.5 ${isLocating ? "animate-spin" : ""}`} />
-                <span>{isLocating ? "Locating..." : "📍 Center on My Location"}</span>
+                <Navigation className={`h-4 w-4 text-fg-muted ${isLocating ? "animate-spin" : ""}`} />
+                <span>{isLocating ? "Finding…" : "Use my location"}</span>
               </button>
             </div>
 
-            <p className="text-[12px] text-[#86868b] leading-relaxed">
-              Rural addresses often geocode to highway midpoints or fields. Click or drag the marker directly onto your actual building structure or distribution door on the live map below.
+            <p className="text-sm text-fg-muted">
+              Rural addresses often land on a highway midpoint rather than a building. Drag the pin
+              onto the door families should walk or drive up to.
             </p>
 
             {/* Live Interactive Leaflet Map Container */}
-            <div className="relative rounded-2xl overflow-hidden border border-[#e5e5ea] h-72 w-full z-0 shadow-inner">
+            <div className="relative rounded-2xl overflow-hidden border border-line h-72 w-full z-0 shadow-inner">
               <div ref={mapContainerRef} className="w-full h-full" />
             </div>
 
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-3 rounded-xl bg-[#f5f5f7] border border-[#e5e5ea] text-[12px]">
-              <span className="font-mono text-[#0071e3] font-bold">
-                Lat: {coords.lat} | Lng: {coords.lng}
+            <div className="flex flex-col items-start justify-between gap-1 rounded-xl bg-sunken p-3 sm:flex-row sm:items-center">
+              <span className="text-sm font-medium tabular text-fg">
+                {coords.lat}, {coords.lng}
               </span>
-              <span className="text-[#86868b] font-medium">{geoStatus}</span>
+              <span className="meta">{geoStatus}</span>
             </div>
 
             {/* Landmark Access Notes */}
             <div>
-              <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">
-                Landmark & Physical Entrance Notes
+              <label className="field-label">
+                Entrance notes
               </label>
               <input
                 type="text"
@@ -239,22 +243,19 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
                 placeholder="e.g. Distribution takes place around back at Fellowship Hall door near blue awning."
                 className={inputClass}
               />
-              <p className="text-[11px] text-[#86868b] mt-1">
-                Helps citizens and delivery drivers find the exact door on large church or warehouse campuses.
+              <p className="text-xs text-fg-muted mt-1">
+                Helps families and delivery drivers find the right door on large church or warehouse sites.
               </p>
             </div>
           </div>
 
           {/* General Information */}
           <div className="card p-5 space-y-4">
-            <div className="flex items-center gap-2 pb-3 border-b border-[#e5e5ea]">
-              <Building2 className="w-[18px] h-[18px] text-[#0071e3]" />
-              <h2 className="text-[14px] font-semibold text-[#1d1d1f]">Organization details</h2>
-            </div>
+            <h2 className="card-title border-b border-line pb-4">Organization details</h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">Pantry name</label>
+                <label className="field-label">Pantry name</label>
                 <input
                   type="text"
                   required
@@ -265,7 +266,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
               </div>
 
               <div>
-                <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">Organization</label>
+                <label className="field-label">Organization</label>
                 <input
                   type="text"
                   value={formData.organization}
@@ -276,7 +277,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
             </div>
 
             <div>
-              <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">Description</label>
+              <label className="field-label">Description</label>
               <textarea
                 rows={3}
                 value={formData.description}
@@ -288,25 +289,22 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
 
           {/* Address & Contact */}
           <div className="card p-5 space-y-4">
-            <div className="flex items-center gap-2 pb-3 border-b border-[#e5e5ea]">
-              <MapPin className="w-[18px] h-[18px] text-[#0071e3]" />
-              <h2 className="text-[14px] font-semibold text-[#1d1d1f]">Address & contact</h2>
-            </div>
+            <h2 className="card-title border-b border-line pb-4">Address & contact</h2>
 
             <div>
-              <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">Street address</label>
+              <label className="field-label">Street address</label>
               <input
                 type="text"
                 required
-                value={formData.address}
-                onChange={(e) => handleChange("address", e.target.value)}
+                value={formData.street}
+                onChange={(e) => handleChange("street", e.target.value)}
                 className={inputClass}
               />
             </div>
 
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">City</label>
+                <label className="field-label">City</label>
                 <input
                   type="text"
                   required
@@ -316,7 +314,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
                 />
               </div>
               <div>
-                <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">State</label>
+                <label className="field-label">State</label>
                 <input
                   type="text"
                   required
@@ -326,7 +324,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
                 />
               </div>
               <div>
-                <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">ZIP</label>
+                <label className="field-label">ZIP</label>
                 <input
                   type="text"
                   required
@@ -340,37 +338,31 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
         </form>
 
         {/* Right: Preview & QR Code Poster */}
-        <div className="space-y-5 self-start">
+        <div className="space-y-5 self-start lg:sticky lg:top-24">
           {/* App Listing Preview */}
           <div className="card p-5 space-y-4">
-            <h2 className="text-[14px] font-semibold text-[#1d1d1f] pb-3 border-b border-[#e5e5ea]">
-              App listing preview
-            </h2>
+            <h2 className="card-title border-b border-line pb-4">App listing preview</h2>
 
-            <div className="p-4 rounded-xl border border-[#e5e5ea] space-y-3 bg-white">
+            <div className="p-4 rounded-xl border border-line space-y-3 bg-surface">
               <div>
-                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[#34c759] mb-1">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  Verified Organization ($0 Free)
+                <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-success-text">
+                  <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+                  Verified organization
                 </div>
-                <h3 className="text-[14px] font-semibold text-[#1d1d1f]">{formData.name}</h3>
-                <p className="text-[12px] text-[#86868b]">{formData.city}, {formData.state}</p>
+                <h3 className="text-base font-semibold text-fg">{formData.name}</h3>
+                <p className="text-xs text-fg-muted">{formData.city}, {formData.state}</p>
               </div>
 
               <div className="flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full ${formData.isOpen ? "bg-[#34c759]" : "bg-[#ff3b30]"}`} />
-                <span className="text-[12px] font-semibold text-[#1d1d1f]">
+                <span className={`w-2 h-2 rounded-full ${formData.isOpen ? "bg-success" : "bg-danger"}`} />
+                <span className="text-xs font-semibold text-fg">
                   {formData.isOpen ? "Open now" : "Closed"}
                 </span>
               </div>
 
-              <p className="text-[11px] text-[#0071e3] font-mono">
-                📍 Coordinates: {coords.lat}, {coords.lng}
-              </p>
-
               {accessNotes && (
-                <p className="text-[12px] text-[#1d1d1f] bg-[#f5f5f7] p-2.5 rounded-xl border border-[#e5e5ea] leading-relaxed">
-                  "{accessNotes}"
+                <p className="rounded-lg bg-sunken p-2.5 text-xs leading-relaxed text-fg">
+                  {accessNotes}
                 </p>
               )}
             </div>
@@ -378,31 +370,37 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ pantry, onUpdatePantry
 
           {/* Printable Entrance Poster & QR Code */}
           <div className="card p-5 space-y-3">
-            <h2 className="text-[14px] font-semibold text-[#1d1d1f]">Pantry Entrance Poster</h2>
-            <p className="text-[12px] text-[#86868b]">
-              Print a flyer with your AccessBelt QR Code for your entrance so waiting families can scan for live stock.
+            <h2 className="card-title">Entrance poster</h2>
+            <p className="text-sm text-fg-muted">
+              Print a sign for your entrance. Families waiting outside can scan it to see current
+              stock and hours.
             </p>
 
-            <div className="p-4 rounded-xl bg-[#f5f5f7] border border-[#e5e5ea] text-center space-y-2">
-              <div className="w-24 h-24 bg-white border border-[#e5e5ea] rounded-xl mx-auto p-2 flex items-center justify-center">
+            <div className="p-4 rounded-xl bg-sunken border border-line text-center space-y-2">
+              <div className="w-24 h-24 bg-surface border border-line rounded-xl mx-auto p-2 flex items-center justify-center">
                 <img
                   src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://accessbelt.org/pantry/${formData.id}`}
                   alt="AccessBelt QR Code"
                   className="w-full h-full object-contain"
                 />
               </div>
-              <p className="text-[11px] font-semibold text-[#1d1d1f]">Scan for Live Stock & Updates</p>
+              <p className="meta font-semibold">Scan for current stock and hours</p>
             </div>
 
-            <button
-              type="button"
-              onClick={() => window.print()}
-              className="w-full py-2 bg-white border border-[#e5e5ea] hover:border-[#d2d2d7] text-[#1d1d1f] text-[12px] font-semibold rounded-xl transition-colors cursor-pointer"
-            >
-              🖨️ Print Entrance Poster
+            <button type="button" onClick={() => window.print()} className="btn btn-secondary no-print w-full">
+              <Printer className="h-4 w-4 text-fg-muted" />
+              Print poster
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Save stays reachable on a form this long */}
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 p-3 backdrop-blur sm:hidden">
+        <button onClick={handleSubmit} className="btn btn-primary w-full">
+          <Save className="h-4 w-4" />
+          {isSaved ? "Saved" : "Save changes"}
+        </button>
       </div>
     </div>
   );

@@ -4,251 +4,247 @@ import {
   AlertTriangle,
   Clock,
   Bell,
-  ArrowUpRight,
-  TrendingUp,
+  Building2,
   ChevronRight,
-  Sparkles,
+  BookOpen,
+  Printer,
   X,
+  Radio,
+  CalendarDays,
+  Megaphone,
+  Users,
 } from 'lucide-react';
-import type { PantryInfo, InventoryItem, ActivityItem } from '../types';
+import type { PantryInfo, InventoryItem, ActivityItem, Operator } from '../types';
+import { stockStatus } from '../types';
+import { formatRelative } from '../lib/datetime';
 import { Link, useNavigate } from 'react-router-dom';
-
 
 interface DashboardPageProps {
   pantry: PantryInfo;
+  operator: Operator;
   inventory: InventoryItem[];
   activity: ActivityItem[];
   onQuickToggleStatus: () => void;
 }
 
+const greeting = () => {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 18) return 'Good afternoon';
+  return 'Good evening';
+};
+
+const activityIcon: Record<ActivityItem['type'], React.ElementType> = {
+  status: Radio,
+  inventory: Package,
+  schedule: CalendarDays,
+  announcement: Megaphone,
+  profile: Building2,
+  location: Building2,
+  team: Users,
+};
+
 export const DashboardPage: React.FC<DashboardPageProps> = ({
   pantry,
+  operator,
   inventory,
   activity,
   onQuickToggleStatus,
 }) => {
   const navigate = useNavigate();
-  const [showOnboardingBanner, setShowOnboardingBanner] = useState<boolean>(true);
-  const lowStockItems = inventory.filter((item) => item.status === 'Low Stock' || item.status === 'Out of Stock');
+  const [showGuideBanner, setShowGuideBanner] = useState(true);
+
+  const lowStockItems = inventory.filter((item) => stockStatus(item) !== 'In Stock');
   const totalQuantity = inventory.reduce((sum, item) => sum + item.quantity, 0);
+
+  const quickActions = [
+    { label: 'Update stock', path: '/inventory', icon: Package },
+    { label: 'Send broadcast', path: '/notifications', icon: Bell },
+    { label: 'Set schedule', path: '/hours', icon: Clock },
+    { label: 'Edit profile', path: '/profile', icon: Building2 },
+  ];
 
   return (
     <div className="space-y-6">
-      {/* First-Time Onboarding Banner */}
-      {showOnboardingBanner && (
-        <div className="p-4 rounded-2xl bg-[#0071e3]/10 border border-[#0071e3]/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#0071e3] text-white flex items-center justify-center shrink-0 shadow-xs">
-              <Sparkles className="w-5 h-5" />
-            </div>
+      {/* Page header */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="page-title">
+            {greeting()}, {operator.name.split(' ')[0]}
+          </h1>
+          <p className="page-subtitle">
+            {pantry.name} · updated {formatRelative(pantry.updatedAt)}
+          </p>
+        </div>
+
+        <button onClick={() => window.print()} className="btn btn-secondary no-print">
+          <Printer className="h-4 w-4 text-fg-muted" />
+          Print summary
+        </button>
+      </div>
+
+      {showGuideBanner && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <BookOpen className="mt-0.5 h-5 w-5 shrink-0 text-fg-muted" />
             <div>
-              <p className="text-[13px] font-bold text-[#1d1d1f]">New to AccessBelt? Take the 2-Minute Quick Guide</p>
-              <p className="text-[12px] text-[#86868b]">Learn how to switch live status, use 1-tap shift mode, and send neighborhood push alerts.</p>
+              <p className="text-sm font-semibold text-fg">New to the operator portal?</p>
+              <p className="text-sm text-fg-muted">
+                A short guide covers setting your status, running a shift, and sending broadcasts.
+              </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-            <button
-              onClick={() => navigate('/onboarding')}
-              className="px-3.5 py-1.5 bg-[#0071e3] hover:bg-[#0077ed] text-white text-[12px] font-bold rounded-xl transition-colors cursor-pointer shadow-xs"
-            >
-              Start 2-Min Guide
+          <div className="flex shrink-0 items-center gap-2 self-end sm:self-auto">
+            <button onClick={() => navigate('/onboarding')} className="btn btn-secondary">
+              Open guide
             </button>
             <button
-              onClick={() => setShowOnboardingBanner(false)}
-              className="p-1 rounded-lg text-[#86868b] hover:text-[#1d1d1f] hover:bg-black/[0.04] transition-colors cursor-pointer"
-              title="Dismiss banner"
+              onClick={() => setShowGuideBanner(false)}
+              className="rounded-md p-1.5 text-fg-muted transition-colors hover:bg-sunken hover:text-fg"
+              aria-label="Dismiss guide"
             >
-              <X className="w-4 h-4" />
+              <X className="h-4 w-4" />
             </button>
           </div>
         </div>
       )}
 
-      {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-[#1d1d1f] tracking-tight font-display">
-          Good afternoon, {pantry.name.split(' ').slice(0, 2).join(' ')}
-        </h1>
-        <p className="text-[14px] text-[#86868b] mt-0.5">
-          Here's an overview of your pantry operations
-        </p>
-      </div>
-
-      {/* Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Status */}
-        <div className="card p-5">
-          <p className="text-[13px] text-[#86868b] font-medium">Status</p>
-          <div className="mt-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className={`w-2.5 h-2.5 rounded-full ${pantry.isOpen ? 'bg-[#34c759]' : 'bg-[#ff3b30]'}`} />
-              <span className="text-lg font-bold text-[#1d1d1f]">
-                {pantry.isOpen ? 'Open' : 'Closed'}
-              </span>
-            </div>
-            <button
-              onClick={onQuickToggleStatus}
-              className="text-[12px] font-semibold text-[#0071e3] hover:underline cursor-pointer"
-            >
-              Toggle
-            </button>
-          </div>
-        </div>
-
-        {/* Food Items */}
-        <div className="card p-5">
-          <p className="text-[13px] text-[#86868b] font-medium">Inventory items</p>
-          <div className="mt-3">
-            <p className="text-lg font-bold text-[#1d1d1f]">{inventory.length}</p>
-            <p className="text-[12px] text-[#86868b] mt-0.5">
-              {totalQuantity.toLocaleString()} units in stock
-            </p>
-          </div>
-        </div>
-
-        {/* Served Families */}
-        <div className="card p-5">
-          <p className="text-[13px] text-[#86868b] font-medium">Families served</p>
-          <div className="mt-3">
-            <p className="text-lg font-bold text-[#1d1d1f]">{pantry.servedThisWeek}</p>
-            <p className="text-[12px] text-[#34c759] mt-0.5 flex items-center gap-1 font-semibold">
-              <TrendingUp className="w-3.5 h-3.5" />
-              +14% vs last week
-            </p>
-          </div>
-        </div>
-
-        {/* Capacity */}
-        <div className="card p-5">
-          <p className="text-[13px] text-[#86868b] font-medium">Capacity</p>
-          <div className="mt-3">
-            <p className="text-lg font-bold text-[#1d1d1f]">{pantry.capacityPercentage}%</p>
-            <div className="w-full h-1.5 rounded-full bg-[#f5f5f7] overflow-hidden mt-2 border border-[#e5e5ea]">
-              <div
-                className="h-full bg-[#0071e3] rounded-full transition-all duration-500"
-                style={{ width: `${pantry.capacityPercentage}%` }}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Quick Action Toolbar for Default Free Pantry Services */}
-      <div className="card p-4 bg-[#f5f5f7] border border-[#e5e5ea] flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div className="space-y-0.5">
-          <p className="text-[13px] font-bold text-[#1d1d1f]">Pantry Free Default Services</p>
-          <p className="text-[12px] text-[#86868b]">Broadcast emergency needs, share extra food surplus, or export board impact reports.</p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
+      {/* Key figures — one anatomy: label, value, qualifier */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <div className="card p-4 sm:p-5">
+          <p className="text-sm font-medium text-fg-muted">Current status</p>
+          <p className="stat-value mt-2 flex items-center gap-2">
+            <span
+              className={`h-2.5 w-2.5 shrink-0 rounded-full ${pantry.isOpen ? 'bg-success' : 'bg-danger'}`}
+            />
+            {pantry.isOpen ? 'Open' : 'Closed'}
+          </p>
           <button
-            onClick={() => navigate("/notifications")}
-            className="px-3.5 py-2 bg-[#0071e3] hover:bg-[#0077ed] text-white text-[12px] font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+            onClick={onQuickToggleStatus}
+            className="mt-1 text-xs font-semibold text-accent-text hover:underline"
           >
-            <Bell className="w-3.5 h-3.5" />
-            <span>Broadcast Need / Surplus</span>
-          </button>
-          <button
-            onClick={() => window.print()}
-            className="px-3.5 py-2 bg-white border border-[#e5e5ea] hover:border-[#d2d2d7] text-[#1d1d1f] text-[12px] font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
-          >
-            🖨️ Export Board Report PDF
+            Switch to {pantry.isOpen ? 'closed' : 'open'}
           </button>
         </div>
+
+        <div className="card p-4 sm:p-5">
+          <p className="text-sm font-medium text-fg-muted">Inventory items</p>
+          <p className="stat-value mt-2">{inventory.length}</p>
+          <p className="meta mt-1">{totalQuantity.toLocaleString()} units in stock</p>
+        </div>
+
+        <div className="card p-4 sm:p-5">
+          <p className="text-sm font-medium text-fg-muted">Families served</p>
+          <p className="stat-value mt-2">{pantry.servedThisWeek.toLocaleString()}</p>
+          <p className="meta mt-1">This week</p>
+        </div>
+
+        <div className="card p-4 sm:p-5">
+          <p className="text-sm font-medium text-fg-muted">Capacity used</p>
+          <p className="stat-value mt-2">{pantry.capacityPercentage}%</p>
+          <div
+            className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-sunken"
+            role="progressbar"
+            aria-valuenow={pantry.capacityPercentage}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Capacity used"
+          >
+            <div
+              className="h-full rounded-full bg-accent transition-all duration-500"
+              style={{ width: `${pantry.capacityPercentage}%` }}
+            />
+          </div>
+        </div>
       </div>
 
-      {/* Main Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Left: Quick Links & Low Stock */}
-        <div className="lg:col-span-2 space-y-5">
-          {/* Quick Links */}
-          <div className="card p-5">
-            <h2 className="text-[14px] font-semibold text-[#1d1d1f] mb-4">Quick actions</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[
-                { label: 'Update stock', path: '/inventory', icon: Package, color: '#0071e3' },
-                { label: 'Send broadcast', path: '/notifications', icon: Bell, color: '#34c759' },
-                { label: 'Set schedule', path: '/hours', icon: Clock, color: '#ff9500' },
-                { label: 'Edit profile', path: '/profile', icon: ArrowUpRight, color: '#af52de' },
-              ].map((action) => (
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <div className="space-y-5 lg:col-span-2">
+          {/* Quick actions */}
+          <section className="card p-5">
+            <h2 className="card-title mb-4">Quick actions</h2>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {quickActions.map((action) => (
                 <Link
                   key={action.path}
                   to={action.path}
-                  className="p-3.5 rounded-xl border border-[#e5e5ea] hover:border-[#d2d2d7] transition-all flex flex-col items-center text-center gap-2 group cursor-pointer bg-white"
+                  className="card-hover flex min-h-[88px] flex-col items-center justify-center gap-2 rounded-xl border border-line p-3.5 text-center"
                 >
-                  <div
-                    className="w-9 h-9 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105"
-                    style={{ backgroundColor: `${action.color}15`, color: action.color }}
-                  >
-                    <action.icon className="w-[18px] h-[18px]" />
-                  </div>
-                  <span className="text-[12px] font-semibold text-[#1d1d1f]">{action.label}</span>
+                  <action.icon className="h-5 w-5 text-fg-muted" />
+                  <span className="text-sm font-semibold text-fg">{action.label}</span>
                 </Link>
               ))}
             </div>
-          </div>
+          </section>
 
-          {/* Low Stock */}
+          {/* Low stock */}
           {lowStockItems.length > 0 && (
-            <div className="card p-5 border-l-4 border-l-[#ff9500]">
-              <div className="flex items-center justify-between mb-4">
+            <section className="card p-5">
+              <div className="mb-4 flex items-start justify-between gap-4">
                 <div className="flex items-center gap-2.5">
-                  <AlertTriangle className="w-[18px] h-[18px] text-[#ff9500]" />
+                  <AlertTriangle className="h-[18px] w-[18px] shrink-0 text-warn-text" />
                   <div>
-                    <h3 className="text-[14px] font-semibold text-[#1d1d1f]">Low stock items</h3>
-                    <p className="text-[12px] text-[#86868b]">{lowStockItems.length} items need restocking</p>
+                    <h2 className="card-title">Needs restocking</h2>
+                    <p className="text-sm text-fg-muted">
+                      {lowStockItems.length} {lowStockItems.length === 1 ? 'item' : 'items'} low or
+                      out of stock
+                    </p>
                   </div>
                 </div>
-                <Link to="/inventory" className="text-[12px] font-semibold text-[#0071e3] hover:underline flex items-center gap-0.5">
+                <Link
+                  to="/inventory"
+                  className="flex shrink-0 items-center gap-0.5 text-sm font-semibold text-accent-text hover:underline"
+                >
                   View all
-                  <ChevronRight className="w-3.5 h-3.5" />
+                  <ChevronRight className="h-3.5 w-3.5" />
                 </Link>
               </div>
 
-              <div className="space-y-2">
+              <ul className="divide-y divide-line border-t border-line">
                 {lowStockItems.map((item) => (
-                  <div key={item.id} className="py-2.5 px-3.5 rounded-xl bg-[#f5f5f7] flex items-center justify-between">
-                    <div>
-                      <p className="text-[13px] font-semibold text-[#1d1d1f]">{item.name}</p>
-                      <p className="text-[12px] text-[#86868b]">{item.category}</p>
+                  <li key={item.id} className="flex items-center justify-between gap-4 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-fg">{item.name}</p>
+                      <p className="meta">{item.category}</p>
                     </div>
                     <span
-                      className={`text-[12px] font-semibold px-2.5 py-1 rounded-md ${
-                        item.status === 'Out of Stock'
-                          ? 'bg-[#ff3b30]/10 text-[#ff3b30]'
-                          : 'bg-[#ff9500]/10 text-[#ff9500]'
+                      className={`badge shrink-0 ${
+                        stockStatus(item) === 'Out of Stock' ? 'badge-danger' : 'badge-warn'
                       }`}
                     >
                       {item.quantity} {item.unit}
                     </span>
-                  </div>
+                  </li>
                 ))}
-              </div>
-            </div>
+              </ul>
+            </section>
           )}
         </div>
 
-        {/* Right: Activity Feed */}
-        <div className="card p-5">
-          <h3 className="text-[14px] font-semibold text-[#1d1d1f] mb-4">Recent activity</h3>
-
-          <div className="space-y-4">
-            {activity.slice(0, 6).map((act) => (
-              <div key={act.id} className="flex gap-3">
-                <div className="w-1.5 h-1.5 rounded-full bg-[#0071e3] mt-2 shrink-0" />
-                <div>
-                  <p className="text-[13px] font-semibold text-[#1d1d1f]">{act.action}</p>
-                  <p className="text-[12px] text-[#86868b] leading-snug mt-0.5">{act.details}</p>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <span className="text-[11px] text-[#86868b]">{act.operatorName}</span>
-                    <span className="text-[11px] text-[#d2d2d7]">·</span>
-                    <span className="text-[11px] text-[#86868b]">{act.timestamp}</span>
+        {/* Activity */}
+        <section className="card p-5">
+          <h2 className="card-title mb-4">Recent activity</h2>
+          <ul className="space-y-4">
+            {activity.slice(0, 6).map((act) => {
+              const Icon = activityIcon[act.type] ?? Building2;
+              return (
+                <li key={act.id} className="flex gap-3">
+                  <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sunken">
+                    <Icon className="h-3.5 w-3.5 text-fg-muted" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-fg">{act.action}</p>
+                    <p className="mt-0.5 text-sm leading-snug text-fg-muted">{act.details}</p>
+                    <p className="meta mt-1">
+                      {act.operatorName} · {formatRelative(act.timestamp)}
+                    </p>
                   </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       </div>
     </div>
   );

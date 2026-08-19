@@ -1,0 +1,124 @@
+rules_version = '2';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AccessBelt Operator Portal — rules for the `accessbelt-operator` database.
+//
+// DEPLOY TARGET: the named database `accessbelt-operator`, NOT (default).
+//   firebase deploy --only firestore:rules --database accessbelt-operator
+//
+// The (default) database keeps its existing rules — `resources`, `users` and
+// `organizations` are already governed there and this file must not replace
+// them. The portal writes to both; only the portal-owned collections below
+// are defined here.
+//
+// Claim model is identical to (default) so one token works against both:
+//   role      state_admin | org_admin | org_staff | read_only_partner | field_worker
+//   orgId     the organisation the operator belongs to
+//   counties  counties the operator may act in
+// ═══════════════════════════════════════════════════════════════════════════
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthed()    { return request.auth != null; }
+    function role()        { return request.auth.token.role; }
+    function callerOrgId() { return request.auth.token.orgId; }
+
+    function isStateAdmin() { return isAuthed() && role() == 'state_admin'; }
+    function isOrgStaff()   { return isAuthed() && role() in ['org_staff', 'org_admin', 'state_admin']; }
+    function isOrgAdmin()   { return isAuthed() && role() in ['org_admin', 'state_admin']; }
+
+    function ownsOrg(orgId)     { return callerOrgId() == orgId || isStateAdmin(); }
+    function orgUnchanged()     { return request.resource.data.orgId == resource.data.orgId; }
+    function pantryUnchanged()  { return request.resource.data.pantryId == resource.data.pantryId; }
+
+    // Every portal document is scoped to an org and a pantry.
+    function validScope(data) {
+      return data.orgId is string && data.orgId.size() > 0
+          && data.pantryId is string && data.pantryId.size() > 0;
+    }
+
+    // ── Inventory ────────────────────────────────────────────────────────
+    // Quantity is the only stored measure of stock; "in stock" and "low
+    // stock" are derived by the client, so there is nothing here to keep
+    // consistent with it beyond a non-negative number.
+    match /inventory/{itemId} {
+      function validItem(d) {
+        return validScope(d)
+            && d.name is string && d.name.size() > 0
+            && d.quantity is number && d.quantity >= 0
+            && d.minThreshold is number && d.minThreshold >= 0;
+      }
+
+      allow read:   if isAuthed() && ownsOrg(resource.data.orgId);
+      allow create: if isOrgStaff() && ownsOrg(request.resource.data.orgId) && validItem(request.resource.data);
+      allow update: if isOrgStaff() && ownsOrg(resource.data.orgId) && orgUnchanged() && pantryUnchanged() && validItem(request.resource.data);
+      allow delete: if isOrgStaff() && ownsOrg(resource.data.orgId);
+    }
+
+    // ── Live open/closed status ──────────────────────────────────────────
+    // Document id is the pantry id, so there is exactly one status per
+    // pantry and concurrent shift updates overwrite rather than accumulate.
+    match /liveStatus/{pantryId} {
+      allow read: if isAuthed() && ownsOrg(resource.data.orgId);
+      allow create, update: if isOrgStaff()
+                            && ownsOrg(request.resource.data.orgId)
+                            && validScope(request.resource.data)
+                            && request.resource.data.isOpen is bool
+                            && request.resource.data.note is string
+                            && request.resource.data.note.size() <= 280;
+      allow delete: if false;
+    }
+
+    // ── Broadcasts ───────────────────────────────────────────────────────
+    // `sentToApp` and `viewsCount` are written by the delivery function, not
+    // by operators — a client must never be able to claim a push was
+    // delivered, or inflate how many people saw it.
+    match /broadcasts/{broadcastId} {
+      function validBroadcast(d) {
+        return validScope(d)
+            && d.title is string && d.title.size() > 0 && d.title.size() <= 120
+            && d.message is string && d.message.size() > 0 && d.message.size() <= 500
+            && d.priority in ['normal', 'important', 'urgent']
+            && d.radiusMiles is number && d.radiusMiles > 0 && d.radiusMiles <= 50;
+      }
+
+      allow read:   if isAuthed() && ownsOrg(resource.data.orgId);
+      allow create: if isOrgStaff()
+                    && ownsOrg(request.resource.data.orgId)
+                    && validBroadcast(request.resource.data)
+                    && request.resource.data.sentToApp == false
+                    && request.resource.data.viewsCount == 0;
+      // Operators may correct the text; delivery fields stay server-owned.
+      allow update: if isOrgStaff() && ownsOrg(resource.data.orgId) && orgUnchanged()
+                    && request.resource.data.sentToApp == resource.data.sentToApp
+                    && request.resource.data.viewsCount == resource.data.viewsCount;
+      allow delete: if isOrgStaff() && ownsOrg(resource.data.orgId);
+    }
+
+    // ── Special closures ─────────────────────────────────────────────────
+    match /closures/{closureId} {
+      allow read:   if isAuthed() && ownsOrg(resource.data.orgId);
+      allow create: if isOrgStaff() && ownsOrg(request.resource.data.orgId) && validScope(request.resource.data);
+      allow update: if isOrgStaff() && ownsOrg(resource.data.orgId) && orgUnchanged();
+      allow delete: if isOrgStaff() && ownsOrg(resource.data.orgId);
+    }
+
+    // ── Activity log ─────────────────────────────────────────────────────
+    // Append-only. An audit trail that can be edited or deleted is not an
+    // audit trail.
+    match /activity/{entryId} {
+      allow read:   if isAuthed() && ownsOrg(resource.data.orgId);
+      allow create: if isOrgStaff()
+                    && ownsOrg(request.resource.data.orgId)
+                    && validScope(request.resource.data)
+                    && request.resource.data.operatorId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Anything not matched above is denied.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

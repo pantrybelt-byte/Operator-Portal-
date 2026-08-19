@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { Plus, Search, Trash2, X, Package, Download, Printer } from 'lucide-react';
 import type { InventoryItem } from '../types';
+import { stockStatus } from '../types';
+import { formatRelative } from '../lib/datetime';
 
 
 interface InventoryPageProps {
   inventory: InventoryItem[];
-  onAddInventoryItem: (newItem: Omit<InventoryItem, 'id' | 'lastUpdated'>) => void;
+  onAddInventoryItem: (newItem: Omit<InventoryItem, 'id' | 'orgId' | 'pantryId' | 'updatedAt'>) => void;
   onUpdateInventoryItem: (updatedItem: InventoryItem) => void;
   onDeleteInventoryItem: (id: string) => void;
 }
@@ -45,13 +47,15 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
       item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.category.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
-    const matchesStatus = statusFilter === 'All' || item.status === statusFilter;
+    const matchesStatus = statusFilter === 'All' || stockStatus(item) === statusFilter;
     return matchesSearch && matchesCategory && matchesStatus;
   });
 
   const handleExportCSV = () => {
     const headers = ['Name', 'Category', 'Quantity', 'Unit', 'Status', 'Last Updated', 'Notes'];
-    const rows = filteredItems.map(i => [i.name, i.category, i.quantity, i.unit, i.status, i.lastUpdated, i.notes || '']);
+    const rows = filteredItems.map((i) => [
+      i.name, i.category, i.quantity, i.unit, stockStatus(i), i.updatedAt.toISOString(), i.notes || '',
+    ]);
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
@@ -70,16 +74,7 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
     e.preventDefault();
     if (!name) return;
 
-    onAddInventoryItem({
-      name,
-      category,
-      quantity,
-      unit,
-      inStock: quantity > 0,
-      status: quantity === 0 ? 'Out of Stock' : quantity <= minThreshold ? 'Low Stock' : 'In Stock',
-      minThreshold,
-      notes,
-    });
+    onAddInventoryItem({ name, category, quantity, unit, minThreshold, notes });
 
     setName('');
     setQuantity(50);
@@ -88,27 +83,25 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
   };
 
   const handleAdjustQuantity = (item: InventoryItem, delta: number) => {
-    const newQty = Math.max(0, item.quantity + delta);
-    const newStatus = newQty === 0 ? 'Out of Stock' : newQty <= item.minThreshold ? 'Low Stock' : 'In Stock';
+    // Status is derived from quantity at render, so only quantity is written.
     onUpdateInventoryItem({
       ...item,
-      quantity: newQty,
-      inStock: newQty > 0,
-      status: newStatus,
-      lastUpdated: 'Just now',
+      quantity: Math.max(0, item.quantity + delta),
+      updatedAt: new Date(),
     });
   };
 
   const statusBadge = (status: string) => {
-    const styles = {
-      'In Stock': 'bg-[#34c759]/10 text-[#34c759]',
-      'Low Stock': 'bg-[#ff9500]/10 text-[#ff9500]',
-      'Out of Stock': 'bg-[#ff3b30]/10 text-[#ff3b30]',
-    }[status] || 'bg-[#f5f5f7] text-[#86868b]';
+    const tone =
+      {
+        'In Stock': 'badge-success',
+        'Low Stock': 'badge-warn',
+        'Out of Stock': 'badge-danger',
+      }[status] ?? 'badge-neutral';
 
     return (
-      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-semibold ${styles}`}>
-        <span className="w-1.5 h-1.5 rounded-full bg-current" />
+      <span className={`badge ${tone}`}>
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
         {status}
       </span>
     );
@@ -119,34 +112,32 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#1d1d1f] tracking-tight font-display">Inventory</h1>
-          <p className="text-[14px] text-[#86868b] mt-0.5">
-            Manage stock levels visible to community members
-          </p>
+          <h1 className="page-title">Inventory</h1>
+          <p className="page-subtitle">Stock levels shown to families in the app</p>
         </div>
 
         <div className="flex items-center gap-2">
           <button
             onClick={handleExportCSV}
-            className="px-3 py-2 bg-white border border-[#e5e5ea] hover:border-[#d2d2d7] text-[#1d1d1f] text-[13px] font-semibold rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+            className="btn btn-secondary no-print"
             title="Export to CSV"
           >
-            <Download className="w-4 h-4 text-[#86868b]" />
+            <Download className="h-4 w-4 text-fg-muted" />
             <span className="hidden sm:inline">Export CSV</span>
           </button>
 
           <button
             onClick={handlePrint}
-            className="px-3 py-2 bg-white border border-[#e5e5ea] hover:border-[#d2d2d7] text-[#1d1d1f] text-[13px] font-semibold rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-            title="Print Shift Inventory Sheet"
+            className="btn btn-secondary no-print"
+            title="Print inventory sheet"
           >
-            <Printer className="w-4 h-4 text-[#86868b]" />
-            <span className="hidden sm:inline">Print Sheet</span>
+            <Printer className="h-4 w-4 text-fg-muted" />
+            <span className="hidden sm:inline">Print sheet</span>
           </button>
 
           <button
             onClick={() => setModalOpen(true)}
-            className="px-4 py-2 bg-[#0071e3] hover:bg-[#0077ed] text-white text-[13px] font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+            className="btn btn-primary"
           >
             <Plus className="w-4 h-4" />
             <span>Add item</span>
@@ -159,13 +150,13 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
         <div className="flex flex-col sm:flex-row items-center gap-3">
           {/* Search */}
           <div className="relative flex-1 w-full">
-            <Search className="w-4 h-4 text-[#86868b] absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-fg-muted absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder="Search inventory…"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 text-[13px] rounded-xl border border-[#e5e5ea] focus:outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/20 bg-white placeholder:text-[#86868b]"
+              className="w-full pl-10 pr-4 py-2 text-sm rounded-xl border border-line focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 bg-surface placeholder:text-fg-muted"
             />
           </div>
 
@@ -175,13 +166,11 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
               <button
                 key={status}
                 onClick={() => setStatusFilter(status)}
-                className={`
-                  px-3 py-1.5 rounded-xl text-[12px] font-semibold whitespace-nowrap transition-colors cursor-pointer
-                  ${statusFilter === status
-                    ? 'bg-[#1d1d1f] text-white'
-                    : 'bg-[#f5f5f7] text-[#86868b] hover:text-[#1d1d1f]'
-                  }
-                `}
+                className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  statusFilter === status
+                    ? 'border-accent bg-accent text-white'
+                    : 'border-line bg-surface text-fg-muted hover:border-line-strong hover:text-fg'
+                }`}
               >
                 {status}
               </button>
@@ -190,18 +179,16 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
         </div>
 
         {/* Category Pills */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
+        <div className="flex flex-wrap items-center gap-2">
           {categories.map((cat) => (
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
-              className={`
-                px-3 py-1 rounded-full text-[12px] font-medium whitespace-nowrap transition-colors cursor-pointer
-                ${selectedCategory === cat
-                  ? 'bg-[#0071e3] text-white'
-                  : 'bg-white border border-[#e5e5ea] text-[#86868b] hover:text-[#1d1d1f] hover:border-[#d2d2d7]'
-                }
-              `}
+              className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                selectedCategory === cat
+                  ? 'border-accent bg-accent text-white'
+                  : 'border-line bg-surface text-fg-muted hover:border-line-strong hover:text-fg'
+              }`}
             >
               {cat}
             </button>
@@ -213,79 +200,77 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
-            <thead className="bg-[#f5f5f7] border-b border-[#e5e5ea]">
+            <thead className="bg-sunken border-b border-line">
               <tr>
-                <th className="py-3 px-4 sm:px-5 text-[12px] font-semibold text-[#86868b]">Item</th>
-                <th className="py-3 px-4 text-[12px] font-semibold text-[#86868b]">Category</th>
-                <th className="py-3 px-4 text-[12px] font-semibold text-[#86868b]">Status</th>
-                <th className="py-3 px-4 text-[12px] font-semibold text-[#86868b] text-center">Quantity</th>
-                <th className="py-3 px-4 text-[12px] font-semibold text-[#86868b]">Updated</th>
-                <th className="py-3 px-4 sm:px-5 text-[12px] font-semibold text-[#86868b] text-right">Actions</th>
+                <th className="py-3 px-4 sm:px-5 text-xs font-semibold text-fg-muted">Item</th>
+                <th className="py-3 px-4 text-xs font-semibold text-fg-muted">Category</th>
+                <th className="py-3 px-4 text-xs font-semibold text-fg-muted">Status</th>
+                <th className="py-3 px-4 text-xs font-semibold text-fg-muted text-center">Quantity</th>
+                <th className="py-3 px-4 text-xs font-semibold text-fg-muted">Updated</th>
+                <th className="py-3 px-4 sm:px-5 text-xs font-semibold text-fg-muted text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#e5e5ea]">
+            <tbody className="divide-y divide-line">
               {filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-[14px] text-[#86868b]">
+                  <td colSpan={6} className="py-12 text-center text-base text-fg-muted">
                     No items match your filters
                   </td>
                 </tr>
               ) : (
                 filteredItems.map((item) => (
-                  <tr key={item.id} className="hover:bg-[#f5f5f7]/60 transition-colors">
+                  <tr key={item.id} className="hover:bg-sunken/60 transition-colors">
                     <td className="py-3.5 px-4 sm:px-5">
-                      <p className="text-[13px] font-semibold text-[#1d1d1f]">{item.name}</p>
-                      {item.notes && <p className="text-[12px] text-[#86868b] mt-0.5">{item.notes}</p>}
+                      <p className="text-sm font-semibold text-fg">{item.name}</p>
+                      {item.notes && <p className="text-xs text-fg-muted mt-0.5">{item.notes}</p>}
                     </td>
                     <td className="py-3.5 px-4">
-                      <span className="text-[12px] text-[#86868b] font-medium">{item.category}</span>
+                      <span className="text-xs text-fg-muted font-medium">{item.category}</span>
                     </td>
                     <td className="py-3.5 px-4">
                       <button
-                        onClick={() => {
-                          const nextInStock = !item.inStock;
+                        onClick={() =>
                           onUpdateInventoryItem({
                             ...item,
-                            inStock: nextInStock,
-                            status: nextInStock ? 'In Stock' : 'Out of Stock',
-                            quantity: nextInStock ? (item.quantity === 0 ? item.minThreshold + 10 : item.quantity) : 0,
-                            lastUpdated: 'Just now',
-                          });
-                        }}
+                            quantity: item.quantity > 0 ? 0 : item.minThreshold + 10,
+                            updatedAt: new Date(),
+                          })
+                        }
                         className="cursor-pointer group"
                         title="Click to toggle stock availability"
                       >
-                        {statusBadge(item.status)}
+                        {statusBadge(stockStatus(item))}
                       </button>
                     </td>
                     <td className="py-3.5 px-4">
                       <div className="flex items-center justify-center gap-2">
                         <button
                           onClick={() => handleAdjustQuantity(item, -10)}
-                          className="w-6 h-6 rounded-lg border border-[#e5e5ea] hover:bg-[#f5f5f7] text-[#1d1d1f] text-[12px] font-bold flex items-center justify-center transition-colors cursor-pointer"
+                          className="w-6 h-6 rounded-lg border border-line hover:bg-sunken text-fg text-xs font-bold flex items-center justify-center transition-colors cursor-pointer"
                           title="Decrease by 10"
                         >
                           −
                         </button>
-                        <span className="text-[13px] font-bold text-[#1d1d1f] min-w-[55px] text-center">
-                          {item.quantity} {item.unit}
+                        <span className="flex min-w-[76px] items-baseline justify-center gap-1">
+                          <span className="tabular text-sm font-semibold text-fg">{item.quantity}</span>
+                          <span className="meta">{item.unit}</span>
                         </span>
                         <button
                           onClick={() => handleAdjustQuantity(item, 10)}
-                          className="w-6 h-6 rounded-lg border border-[#e5e5ea] hover:bg-[#f5f5f7] text-[#1d1d1f] text-[12px] font-bold flex items-center justify-center transition-colors cursor-pointer"
+                          className="w-6 h-6 rounded-lg border border-line hover:bg-sunken text-fg text-xs font-bold flex items-center justify-center transition-colors cursor-pointer"
                           title="Increase by 10"
                         >
                           +
                         </button>
                       </div>
                     </td>
-                    <td className="py-3.5 px-4 text-[12px] text-[#86868b]">
-                      {item.lastUpdated}
+                    <td className="py-3.5 px-4 text-xs text-fg-muted">
+                      {formatRelative(item.updatedAt)}
                     </td>
                     <td className="py-3.5 px-4 sm:px-5 text-right">
                       <button
                         onClick={() => onDeleteInventoryItem(item.id)}
-                        className="p-1.5 rounded-lg text-[#86868b] hover:text-[#ff3b30] hover:bg-[#ff3b30]/10 transition-colors cursor-pointer"
+                        className="p-1.5 rounded-lg text-fg-muted hover:text-danger-text hover:bg-danger-tint transition-colors cursor-pointer"
                         title="Remove"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -302,42 +287,42 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
       {/* Add Item Modal */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 bg-black/30 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-[#e5e5ea]">
-            <div className="flex items-center justify-between mb-5 border-b border-[#e5e5ea] pb-4">
+          <div className="bg-surface rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-line">
+            <div className="flex items-center justify-between mb-5 border-b border-line pb-4">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-[#0071e3]/10 text-[#0071e3] flex items-center justify-center">
+                <div className="w-9 h-9 rounded-xl bg-accent-tint text-accent-text flex items-center justify-center">
                   <Package className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-[#1d1d1f]">Add inventory item</h3>
-                  <p className="text-[13px] text-[#86868b]">This will be visible on the AccessBelt app</p>
+                  <h3 className="text-base font-bold text-fg">Add inventory item</h3>
+                  <p className="text-sm text-fg-muted">This will be visible on the AccessBelt app</p>
                 </div>
               </div>
-              <button onClick={() => setModalOpen(false)} className="p-1 rounded-lg text-[#86868b] hover:text-[#1d1d1f] hover:bg-black/[0.04]">
+              <button onClick={() => setModalOpen(false)} className="p-1 rounded-lg text-fg-muted hover:text-fg hover:bg-black/[0.04]">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleCreateItem} className="space-y-4">
               <div>
-                <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">Item name</label>
+                <label className="block text-sm font-semibold text-fg mb-1">Item name</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Fresh Apples, Peanut Butter"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full text-[13px] p-2.5 rounded-xl border border-[#e5e5ea] focus:outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/20 bg-white placeholder:text-[#86868b]"
+                  className="w-full text-sm p-2.5 rounded-xl border border-line focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 bg-surface placeholder:text-fg-muted"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">Category</label>
+                  <label className="block text-sm font-semibold text-fg mb-1">Category</label>
                   <select
                     value={category}
                     onChange={(e) => setCategory(e.target.value as any)}
-                    className="w-full text-[13px] p-2.5 rounded-xl border border-[#e5e5ea] focus:outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/20 bg-white"
+                    className="w-full text-sm p-2.5 rounded-xl border border-line focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 bg-surface"
                   >
                     {categories.filter(c => c !== 'All').map((c) => (
                       <option key={c} value={c}>{c}</option>
@@ -346,17 +331,17 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">Unit type</label>
+                  <label className="block text-sm font-semibold text-fg mb-1">Unit type</label>
                   <select
                     value={unit}
                     onChange={(e) => setUnit(e.target.value as any)}
-                    className="w-full text-[13px] p-2.5 rounded-xl border border-[#e5e5ea] focus:outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/20 bg-white"
+                    className="w-full text-sm p-2.5 rounded-xl border border-line focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 bg-surface"
                   >
                     <option value="lbs">Pounds (lbs)</option>
                     <option value="boxes">Boxes</option>
                     <option value="crates">Crates</option>
                     <option value="cans">Cans</option>
-                    <option value="units">Individual Units</option>
+                    <option value="units">Individual units</option>
                     <option value="bags">Bags</option>
                   </select>
                 </div>
@@ -364,52 +349,52 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">Quantity</label>
+                  <label className="block text-sm font-semibold text-fg mb-1">Quantity</label>
                   <input
                     type="number"
                     min={0}
                     value={quantity}
                     onChange={(e) => setQuantity(Number(e.target.value))}
-                    className="w-full text-[13px] p-2.5 rounded-xl border border-[#e5e5ea] focus:outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/20 bg-white"
+                    className="w-full text-sm p-2.5 rounded-xl border border-line focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 bg-surface"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">Low stock threshold</label>
+                  <label className="block text-sm font-semibold text-fg mb-1">Low stock threshold</label>
                   <input
                     type="number"
                     min={0}
                     value={minThreshold}
                     onChange={(e) => setMinThreshold(Number(e.target.value))}
-                    className="w-full text-[13px] p-2.5 rounded-xl border border-[#e5e5ea] focus:outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/20 bg-white"
+                    className="w-full text-sm p-2.5 rounded-xl border border-line focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 bg-surface"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[13px] font-semibold text-[#1d1d1f] mb-1">
-                  Notes <span className="text-[#86868b] font-normal">(optional)</span>
+                <label className="block text-sm font-semibold text-fg mb-1">
+                  Notes <span className="text-fg-muted font-normal">(optional)</span>
                 </label>
                 <input
                   type="text"
                   placeholder="e.g. Donated by Orchard Valley Farms"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  className="w-full text-[13px] p-2.5 rounded-xl border border-[#e5e5ea] focus:outline-none focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/20 bg-white placeholder:text-[#86868b]"
+                  className="w-full text-sm p-2.5 rounded-xl border border-line focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 bg-surface placeholder:text-fg-muted"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#e5e5ea]">
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-line">
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  className="px-4 py-2 text-[13px] font-semibold text-[#86868b] hover:text-[#1d1d1f] rounded-xl hover:bg-black/[0.04] transition-colors cursor-pointer"
+                  className="px-4 py-2 text-sm font-semibold text-fg-muted hover:text-fg rounded-xl hover:bg-black/[0.04] transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-[13px] font-semibold bg-[#0071e3] text-white rounded-xl hover:bg-[#0077ed] transition-colors cursor-pointer shadow-xs"
+                  className="px-5 py-2 text-sm font-semibold bg-accent text-white rounded-xl hover:bg-accent-hover transition-colors cursor-pointer shadow-xs"
                 >
                   Add item
                 </button>
